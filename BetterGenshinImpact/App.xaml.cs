@@ -1,6 +1,7 @@
 ﻿using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Helpers.Extensions;
+using BetterGenshinImpact.Hutao;
 using BetterGenshinImpact.Service;
 using BetterGenshinImpact.Service.Interface;
 using BetterGenshinImpact.Service.Notification;
@@ -10,6 +11,7 @@ using BetterGenshinImpact.View.Pages;
 using BetterGenshinImpact.ViewModel;
 using BetterGenshinImpact.ViewModel.Pages;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -20,6 +22,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
+using BetterGenshinImpact.ViewModel.Pages.OneDragon;
 using Wpf.Ui;
 using Wpf.Ui.Violeta.Controls;
 
@@ -36,6 +39,10 @@ public partial class App : Application
         .CheckIntegration()
         .UseElevated()
         .UseSingleInstance("BetterGI")
+        .ConfigureLogging(builder =>
+        {
+            builder.ClearProviders();
+        })
         .ConfigureServices(
             (context, services) =>
             {
@@ -66,7 +73,6 @@ public partial class App : Application
 
                 // App Host
                 services.AddHostedService<ApplicationHostService>();
-
                 // Page resolver service
                 services.AddSingleton<IPageService, PageService>();
 
@@ -92,12 +98,24 @@ public partial class App : Application
                 services.AddView<MapPathingPage, MapPathingViewModel>();
                 services.AddView<OneDragonFlowPage, OneDragonFlowViewModel>();
 
+                // 一条龙 ViewModels
+                // services.AddSingleton<CraftViewModel>();
+                // services.AddSingleton<DailyCommissionViewModel>();
+                // services.AddSingleton<DailyRewardViewModel>();
+                // services.AddSingleton<DomainViewModel>();
+                // services.AddSingleton<ForgingViewModel>();
+                // services.AddSingleton<LeyLineBlossomViewModel>();
+                // services.AddSingleton<MailViewModel>();
+                // services.AddSingleton<SereniteaPotViewModel>();
+                // services.AddSingleton<TcgViewModel>();
+
                 // My Services
                 services.AddSingleton<TaskTriggerDispatcher>();
                 services.AddSingleton<NotificationService>();
                 services.AddHostedService(sp => sp.GetRequiredService<NotificationService>());
                 services.AddSingleton<NotifierManager>();
                 services.AddSingleton<IScriptService, ScriptService>();
+                services.AddSingleton<HutaoNamedPipe>();
 
                 // Configuration
                 //services.Configure<AppConfig>(context.Configuration.GetSection(nameof(AppConfig)));
