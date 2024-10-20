@@ -6,5 +6,8 @@ public enum Feature2DType
     SURF,
 
     // ReSharper disable once InconsistentNaming
-    SIFT
+    SIFT,
+    
+    // ReSharper disable once InconsistentNaming
+    FAST
 }

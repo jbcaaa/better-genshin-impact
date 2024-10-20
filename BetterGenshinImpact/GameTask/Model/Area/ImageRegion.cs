@@ -343,7 +343,7 @@ public class ImageRegion : Region
         }
         else
         {
-            throw new Exception($"ImageRegion不支持的识别类型{ro.RecognitionType}");
+            throw new Exception($"ImageRegion不支持识别的类型{ro.RecognitionType}");
         }
     }
 
