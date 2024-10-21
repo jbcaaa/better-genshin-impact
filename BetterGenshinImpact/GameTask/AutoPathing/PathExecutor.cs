@@ -50,8 +50,6 @@ public class PathExecutor(CancellationToken ct)
                 }
                 else
                 {
-                    await BeforeMoveToTarget(waypoint);
-
                     // Path不用走得很近，Target需要接近，但都需要先移动到对应位置
                     await MoveTo(waypoint);
 
@@ -99,6 +97,9 @@ public class PathExecutor(CancellationToken ct)
         var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
         Logger.LogInformation("粗略接近途经点，位置({x2},{y2})", $"{waypoint.GameX:F1}", $"{waypoint.GameY:F1}");
         await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
+        
+        await BeforeMoveToTarget(waypoint);
+        
         var startTime = DateTime.UtcNow;
         var lastPositionRecord = DateTime.UtcNow;
         var fastMode = false;

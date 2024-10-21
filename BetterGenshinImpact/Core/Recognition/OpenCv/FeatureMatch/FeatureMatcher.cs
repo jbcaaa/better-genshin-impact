@@ -116,26 +116,6 @@ public class FeatureMatcher
         Debug.WriteLine($"切割特征点耗时: {sw.ElapsedMilliseconds}ms");
     }
 
-    public FeatureMatcher(Mat trainMat, bool fast)
-    {
-        _trainMatSize = trainMat.Size();
-        if (fast)
-        {
-            _feature2D = FastFeatureDetector.Create();
-        }
-        else
-        {
-            _feature2D = SURF.Create(_threshold, 4, 3, false, true);
-        }
-
-        var kp = _feature2D.Detect(trainMat);
-        Cv2.DrawKeypoints(trainMat, kp, trainMat, Scalar.Green);
-
-
-        Debug.WriteLine("被匹配的图像生成初始化KeyPoint完成");
-        Stopwatch sw = new();
-    }
-
 
     public DescriptorMatcher GetMatcher(DescriptorMatcherType type)
     {
