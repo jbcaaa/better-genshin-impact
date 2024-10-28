@@ -36,6 +36,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0"
                         BorderBrush="{DynamicResource ControlStrongFillColorDisabledBrush}"
@@ -65,6 +66,10 @@
                         </ContextMenu>
                     </ui:ListView.ContextMenu>
                 </ui:ListView>
+                <ui:Button Grid.Row="2"
+                           Margin="2"
+                           Command="{Binding StartMultiScriptGroupCommand}"
+                           Content="连续执行" />
             </Grid>
         </Grid>
 
@@ -172,16 +177,20 @@
 
                 <StackPanel Grid.Row="2" Orientation="Horizontal">
                     <ui:Button Command="{Binding StartScriptGroupCommand}"
-                               Content="运行此组配置"
+                               Content="运行"
                                Icon="{ui:SymbolIcon Play24}" />
                     <Separator Width="10" Opacity="0" />
 
-                    <ui:TextBlock VerticalAlignment="Center"
+
+                    <ui:Button Command="{Binding OpenScriptGroupSettingsCommand}"
+                               Content="设置"
+                               Icon="{ui:SymbolIcon Settings24}" />
+                    <!--<ui:TextBlock VerticalAlignment="Center"
                                   FontSize="16"
                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                   TextWrapping="Wrap">
                         停止运行请配置并使用快捷键！
-                    </ui:TextBlock>
+                    </ui:TextBlock>-->
                 </StackPanel>
 
                 <Separator Grid.Row="3"

@@ -1,6 +1,7 @@
 ﻿using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Script.WebView;
 using BetterGenshinImpact.GameTask;
+using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Helpers.Http;
 using BetterGenshinImpact.Model;
 using BetterGenshinImpact.View.Controls.Webview;
@@ -16,6 +17,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
+using Vanara.PInvoke;
 using Wpf.Ui.Violeta.Controls;
 
 namespace BetterGenshinImpact.Core.Script;
@@ -95,7 +97,20 @@ public class ScriptRepoUpdater : Singleton<ScriptRepoUpdater>
         var updated = false;
 
         // 检查仓库是否存在，不存在则下载
-        if (!Directory.Exists(CenterRepoPath))
+        var needDownload = false;
+        if (Directory.Exists(CenterRepoPath))
+        {
+            var p = Directory.GetFiles(CenterRepoPath, "repo.json", SearchOption.AllDirectories).FirstOrDefault();
+            if (p is null)
+            {
+                needDownload = true;
+            }
+        }
+        else
+        {
+            needDownload = true;
+        }
+        if (needDownload)
         {
             await DownloadRepoAndUnzip(string.Format(fastProxyUrl, url));
             updated = true;
@@ -190,7 +205,7 @@ public class ScriptRepoUpdater : Singleton<ScriptRepoUpdater>
         // 删除旧文件夹
         if (Directory.Exists(CenterRepoPath))
         {
-            Directory.Delete(CenterRepoPath, true);
+            DirectoryHelper.DeleteReadOnlyDirectory(CenterRepoPath);
         }
 
         // 使用 System.IO.Compression 解压
@@ -224,7 +239,6 @@ public class ScriptRepoUpdater : Singleton<ScriptRepoUpdater>
                     CloseButtonText = "关闭",
                     PrimaryButtonText = "确认导入",
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    Owner = Application.Current.MainWindow,
                 };
 
                 var result = await uiMessageBox.ShowDialogAsync();
@@ -232,6 +246,20 @@ public class ScriptRepoUpdater : Singleton<ScriptRepoUpdater>
                 {
                     await ImportScriptFromPathJson(pathJson);
                 }
+
+                // ContentDialog dialog = new()
+                // {
+                //     Title = "脚本订阅",
+                //     Content = $"检测到{(formClipboard ? "剪切板上存在" : "")}脚本订阅链接，解析后需要导入的脚本为：{pathJson}。\n是否导入并覆盖此文件或者文件夹下的脚本？",
+                //     CloseButtonText = "关闭",
+                //     PrimaryButtonText = "确认导入",
+                // };
+                //
+                // var result = await dialog.ShowAsync();
+                // if (result == ContentDialogResult.Primary)
+                // {
+                //     await ImportScriptFromPathJson(pathJson);
+                // }
             }
 
             if (formClipboard)
@@ -349,6 +377,9 @@ public class ScriptRepoUpdater : Singleton<ScriptRepoUpdater>
                     }
 
                     CopyDirectory(scriptPath, destPath);
+
+                    // 图标处理
+                    DealWithIconFolder(destPath);
                 }
                 else if (File.Exists(scriptPath))
                 {
@@ -423,6 +454,27 @@ public class ScriptRepoUpdater : Singleton<ScriptRepoUpdater>
         else
         {
             _webWindow.Activate();
+        }
+    }
+
+    /// <summary>
+    /// 处理带有 icon.ico 和 desktop.ini 的文件夹
+    /// </summary>
+    /// <param name="folderPath"></param>
+    private void DealWithIconFolder(string folderPath)
+    {
+        if (Directory.Exists(folderPath)
+            && File.Exists(Path.Combine(folderPath, "desktop.ini")))
+        {
+            // 使用 Vanara 库中的 SetFileAttributes 函数设置文件夹属性
+            if (Kernel32.SetFileAttributes(folderPath, FileFlagsAndAttributes.FILE_ATTRIBUTE_READONLY))
+            {
+                Debug.WriteLine($"成功将文件夹设置为只读: {folderPath}");
+            }
+            else
+            {
+                Debug.WriteLine($"无法设置文件夹为只读: {folderPath}");
+            }
         }
     }
 }

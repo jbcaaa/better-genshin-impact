@@ -21,31 +21,33 @@ public class RepoWebBridge
     {
         try
         {
-            var needUpdate = false;
-            string? localRepoJsonPath = null;
-            if (Directory.Exists(ScriptRepoUpdater.CenterRepoPath))
-            {
-                localRepoJsonPath = Directory.GetFiles(ScriptRepoUpdater.CenterRepoPath, "repo.json", SearchOption.AllDirectories).FirstOrDefault();
-                if (localRepoJsonPath is null)
-                {
-                    needUpdate = true;
-                }
-            }
-            else
-            {
-                needUpdate = true;
-            }
+            // var needUpdate = false;
+            // string? localRepoJsonPath = null;
+            // if (Directory.Exists(ScriptRepoUpdater.CenterRepoPath))
+            // {
+            //     localRepoJsonPath = Directory.GetFiles(ScriptRepoUpdater.CenterRepoPath, "repo.json", SearchOption.AllDirectories).FirstOrDefault();
+            //     if (localRepoJsonPath is null)
+            //     {
+            //         needUpdate = true;
+            //     }
+            // }
+            // else
+            // {
+            //     needUpdate = true;
+            // }
+            //
+            // if (needUpdate)
+            // {
+            //     await ScriptRepoUpdater.Instance.UpdateCenterRepo();
+            // }
 
-            if (needUpdate)
-            {
-                await ScriptRepoUpdater.Instance.UpdateCenterRepo();
-                localRepoJsonPath = Directory.GetFiles(ScriptRepoUpdater.CenterRepoPath, "repo.json", SearchOption.AllDirectories).FirstOrDefault();
-                if (localRepoJsonPath is null)
-                {
-                    throw new Exception("本地仓库缺少 repo.json");
-                }
-            }
+            await ScriptRepoUpdater.Instance.UpdateCenterRepo();
 
+            var localRepoJsonPath = Directory.GetFiles(ScriptRepoUpdater.CenterRepoPath, "repo.json", SearchOption.AllDirectories).FirstOrDefault();
+            if (localRepoJsonPath is null)
+            {
+                throw new Exception("repo.json 不存在，可能是更新仓库信息失败！");
+            }
             var json = await File.ReadAllTextAsync(localRepoJsonPath);
             return json;
         }

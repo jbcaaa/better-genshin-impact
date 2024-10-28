@@ -1,4 +1,5 @@
-﻿using BetterGenshinImpact.Core.Recognition.OCR;
+﻿using BetterGenshinImpact.Core.Recognition;
+using BetterGenshinImpact.Core.Recognition.OCR;
 using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.GameTask.AutoFight.Config;
@@ -7,8 +8,11 @@ using BetterGenshinImpact.Helpers;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using BetterGenshinImpact.GameTask.AutoTrackPath;
+using BetterGenshinImpact.GameTask.Common.BgiVision;
 using Vanara.PInvoke;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 
@@ -102,13 +106,18 @@ public class Avatar
     /// <returns></returns>
     public void ThrowWhenDefeated(ImageRegion region)
     {
-        using var confirmRectArea = region.Find(AutoFightContext.Instance.FightAssets.ConfirmRa);
-        if (!confirmRectArea.IsEmpty())
+        if (Bv.IsInRevivePrompt(region))
         {
+            Logger.LogWarning("检测到复苏界面，存在角色被击败，前往七天神像复活");
+            // 先打开地图
             Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
             Sleep(600, Ct);
             Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_M);
-            throw new Exception("存在角色被击败，按 M 键打开地图，并停止自动秘境。");
+            // tp 到七天神像复活
+            var tpTask = new TpTask(Ct);
+            tpTask.Tp(TpTask.ReviveStatueOfTheSevenPointX, TpTask.ReviveStatueOfTheSevenPointY, true).Wait(Ct);
+
+            throw new Exception("检测到复苏界面，存在角色被击败，前往七天神像复活");
         }
     }
 
@@ -129,16 +138,53 @@ public class Avatar
             ThrowWhenDefeated(region);
 
             var notActiveCount = CombatScenes.Avatars.Count(avatar => !avatar.IsActive(region));
-            if (IsActive(region) && notActiveCount == 3)
+            if (IsActive(region) && notActiveCount == CombatScenes.ExpectedTeamAvatarNum - 1)
             {
                 return;
             }
 
             AutoFightContext.Instance.Simulator.KeyPress(User32.VK.VK_1 + (byte)Index - 1);
             // Debug.WriteLine($"切换到{Index}号位");
-            // Cv2.ImWrite($"log/切换.png", content.CaptureRectArea.SrcMat);
+            // Cv2.ImWrite($"log/切换.png", region.SrcMat);
             Sleep(250, Ct);
         }
+    }
+
+    /// <summary>
+    /// 尝试切换到本角色
+    /// </summary>
+    /// <param name="tryTimes"></param>
+    /// <param name="needLog"></param>
+    /// <returns></returns>
+    public bool TrySwitch(int tryTimes = 4, bool needLog = true)
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            if (Ct is { IsCancellationRequested: true })
+            {
+                return false;
+            }
+
+            var region = CaptureToRectArea();
+            ThrowWhenDefeated(region);
+
+            var notActiveCount = CombatScenes.Avatars.Count(avatar => !avatar.IsActive(region));
+            if (IsActive(region) && notActiveCount == CombatScenes.ExpectedTeamAvatarNum - 1)
+            {
+                if (needLog && i > 0)
+                {
+                    Logger.LogInformation("成功切换角色:{Name}", Name);
+                }
+
+                return true;
+            }
+
+            AutoFightContext.Instance.Simulator.KeyPress(User32.VK.VK_1 + (byte)Index - 1);
+
+            Sleep(250, Ct);
+        }
+
+        return false;
     }
 
     /// <summary>

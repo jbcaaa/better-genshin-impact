@@ -18,6 +18,10 @@ using BetterGenshinImpact.ViewModel.Message;
 using CommunityToolkit.Mvvm.Messaging;
 using Wpf.Ui.Controls;
 using Wpf.Ui.Violeta.Controls;
+using System.Windows;
+using BetterGenshinImpact.GameTask;
+using BetterGenshinImpact.View.Pages.View;
+using Wpf.Ui.Violeta.Win32;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 
@@ -28,6 +32,9 @@ public partial class MapPathingViewModel : ObservableObject, INavigationAware, I
 
     [ObservableProperty]
     private ObservableCollection<FileTreeNode<PathingTask>> _treeList = [];
+
+    [ObservableProperty]
+    private FileTreeNode<PathingTask>? _selectNode;
 
     private MapViewer? _mapViewer;
     private readonly IScriptService _scriptService;
@@ -40,6 +47,8 @@ public partial class MapPathingViewModel : ObservableObject, INavigationAware, I
         _scriptService = scriptService;
         Config = configService.Get();
         WeakReferenceMessenger.Default.Register<RefreshDataMessage>(this, (r, m) => InitScriptListViewData());
+
+        IconManager.CacheExcludeExtensions = [".ico"];
     }
 
     private void InitScriptListViewData()
@@ -49,6 +58,16 @@ public partial class MapPathingViewModel : ObservableObject, INavigationAware, I
         // 循环写入 root.Children
         foreach (var item in root.Children)
         {
+            // 补充图标
+            if (!string.IsNullOrEmpty(item.FilePath) && File.Exists(Path.Combine(item.FilePath, "icon.ico")))
+            {
+                item.IconFilePath = Path.Combine(item.FilePath, "icon.ico");
+            }
+            else
+            {
+                item.IconFilePath = item.FilePath;
+            }
+
             TreeList.Add(item);
         }
     }
@@ -85,12 +104,14 @@ public partial class MapPathingViewModel : ObservableObject, INavigationAware, I
     }
 
     [RelayCommand]
-    public async void OnStart(FileTreeNode<PathingTask>? item)
+    public async void OnStart()
     {
+        var item = SelectNode;
         if (item == null)
         {
             return;
         }
+
         if (item.IsDirectory)
         {
             Toast.Warning("执行多个地图追踪任务的时候，请使用调度器功能");
@@ -129,13 +150,26 @@ public partial class MapPathingViewModel : ObservableObject, INavigationAware, I
     }
 
     [RelayCommand]
+    public async void OnOpenSettings()
+    {
+        // var uiMessageBox = new Wpf.Ui.Controls.MessageBox
+        // {
+        //     Content = new PathingConfigView(TaskContext.Instance().Config.PathingConfig),
+        //     Title = "路径追踪配置",
+        //     CloseButtonText = "关闭"
+        // };
+        //
+        // await uiMessageBox.ShowDialogAsync();
+    }
+
+    [RelayCommand]
     public void OnGoToPathingUrl()
     {
         Process.Start(new ProcessStartInfo("https://bgi.huiyadan.com/autos/pathing.html") { UseShellExecute = true });
     }
 
     [RelayCommand]
-    public void OnRefresh(object? item)
+    public void OnRefresh()
     {
         InitScriptListViewData();
     }

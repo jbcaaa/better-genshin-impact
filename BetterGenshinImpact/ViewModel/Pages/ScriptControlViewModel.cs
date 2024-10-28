@@ -1,10 +1,13 @@
 ﻿using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.Core.Script.Project;
+using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 using BetterGenshinImpact.Helpers.Ui;
 using BetterGenshinImpact.Model;
 using BetterGenshinImpact.Service.Interface;
+using BetterGenshinImpact.View.Controls;
+using BetterGenshinImpact.View.Pages.View;
 using BetterGenshinImpact.View.Windows;
 using BetterGenshinImpact.View.Windows.Editable;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -22,6 +25,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 using Wpf.Ui.Violeta.Controls;
@@ -139,7 +143,7 @@ public partial class ScriptControlViewModel : ObservableObject, INavigationAware
         if (!string.IsNullOrEmpty(str))
         {
             var folderName = str.Split(" - ")[0];
-            SelectedScriptGroup?.Projects.Add(new ScriptGroupProject(new ScriptProject(folderName)));
+            SelectedScriptGroup?.AddProject(new ScriptGroupProject(new ScriptProject(folderName)));
         }
     }
 
@@ -157,7 +161,7 @@ public partial class ScriptControlViewModel : ObservableObject, INavigationAware
         var str = PromptDialog.Prompt("请选择需要添加的键鼠脚本", "请选择需要添加的键鼠脚本", combobox);
         if (!string.IsNullOrEmpty(str))
         {
-            SelectedScriptGroup?.Projects.Add(ScriptGroupProject.BuildKeyMouseProject(str));
+            SelectedScriptGroup?.AddProject(ScriptGroupProject.BuildKeyMouseProject(str));
         }
     }
 
@@ -242,7 +246,7 @@ public partial class ScriptControlViewModel : ObservableObject, INavigationAware
                     if (grandChild is CheckBox { IsChecked: true } checkBox)
                     {
                         var fileInfo = new FileInfo((string)checkBox.Tag);
-                        SelectedScriptGroup?.Projects.Add(ScriptGroupProject.BuildPathingProject(fileInfo.Name, fileInfo.Directory!.Name));
+                        SelectedScriptGroup?.AddProject(ScriptGroupProject.BuildPathingProject(fileInfo.Name, fileInfo.Directory!.Name));
                     }
                 }
             }
@@ -543,7 +547,7 @@ public partial class ScriptControlViewModel : ObservableObject, INavigationAware
         if ("AutoCrystalflyExampleGroup" == scriptGroupExample)
         {
             group.Name = "晶蝶示例组";
-            group.Projects.Add(new ScriptGroupProject(new ScriptProject("AutoCrystalfly")));
+            group.AddProject(new ScriptGroupProject(new ScriptProject("AutoCrystalfly")));
         }
 
         if (ScriptGroups.Any(x => x.Name == group.Name))
@@ -577,5 +581,123 @@ public partial class ScriptControlViewModel : ObservableObject, INavigationAware
         }
 
         await _scriptService.RunMulti(SelectedScriptGroup.Projects, SelectedScriptGroup.Name);
+    }
+
+    [RelayCommand]
+    public void OnOpenScriptGroupSettings()
+    {
+        if (SelectedScriptGroup == null)
+        {
+            return;
+        }
+
+        // var uiMessageBox = new Wpf.Ui.Controls.MessageBox
+        // {
+        //     Content = new ScriptGroupConfigView(SelectedScriptGroup.Config),
+        //     Title = "配置组设置"
+        // };
+        //
+        // await uiMessageBox.ShowDialogAsync();
+
+        var dialogWindow = new Window
+        {
+            Title = "配置组设置",
+            Content = new ScriptGroupConfigView(SelectedScriptGroup.Config),
+            SizeToContent = SizeToContent.WidthAndHeight,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        // var dialogWindow = new WpfUiWindow(new ScriptGroupConfigView(SelectedScriptGroup.Config))
+        // {
+        //     Title = "配置组设置"
+        // };
+
+        // 显示对话框
+        var result = dialogWindow.ShowDialog();
+
+        // if (result == true)
+        // {
+        //     // 用户点击了确定或关闭
+        // }
+
+        WriteScriptGroup(SelectedScriptGroup);
+    }
+
+    [RelayCommand]
+    public async Task OnStartMultiScriptGroupAsync()
+    {
+        // 创建一个 StackPanel 来包含全选按钮和所有配置组的 CheckBox
+        var stackPanel = new StackPanel();
+        var checkBoxes = new Dictionary<ScriptGroup, CheckBox>();
+
+        // 创建全选按钮
+        var selectAllCheckBox = new CheckBox
+        {
+            Content = "全选",
+        };
+        selectAllCheckBox.Checked += (s, e) =>
+        {
+            foreach (var checkBox in checkBoxes.Values)
+            {
+                checkBox.IsChecked = true;
+            }
+        };
+        selectAllCheckBox.Unchecked += (s, e) =>
+        {
+            foreach (var checkBox in checkBoxes.Values)
+            {
+                checkBox.IsChecked = false;
+            }
+        };
+        stackPanel.Children.Add(selectAllCheckBox);
+        // 添加分割线
+        var separator = new Separator
+        {
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+        stackPanel.Children.Add(separator);
+
+        // 创建每个配置组的 CheckBox
+        foreach (var scriptGroup in ScriptGroups)
+        {
+            var checkBox = new CheckBox
+            {
+                Content = scriptGroup.Name,
+                Tag = scriptGroup
+            };
+            checkBoxes[scriptGroup] = checkBox;
+            stackPanel.Children.Add(checkBox);
+        }
+
+        var uiMessageBox = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = "选择需要执行的配置组",
+            Content = new ScrollViewer
+            {
+                Content = stackPanel,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Height = 300 // 设置固定高度
+            },
+            CloseButtonText = "关闭",
+            PrimaryButtonText = "确认执行",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var result = await uiMessageBox.ShowDialogAsync();
+        if (result == Wpf.Ui.Controls.MessageBoxResult.Primary)
+        {
+            var selectedGroups = checkBoxes
+                .Where(kv => kv.Value.IsChecked == true)
+                .Select(kv => kv.Key)
+                .ToList();
+
+            _logger.LogInformation("开始连续执行选中配置组:{Names}", string.Join(",", selectedGroups.Select(x => x.Name)));
+
+            foreach (var scriptGroup in selectedGroups)
+            {
+                await _scriptService.RunMulti(scriptGroup.Projects, scriptGroup.Name);
+                await Task.Delay(2000);
+            }
+        }
     }
 }
