@@ -130,6 +130,7 @@ public partial class ScriptGroupProject : ObservableObject
             {
                 throw new Exception("JS脚本未初始化");
             }
+            JsScriptSettingsObject ??= new ExpandoObject();
             await Project.ExecuteAsync(JsScriptSettingsObject);
         }
         if (Type == "KeyMouse")
@@ -144,7 +145,7 @@ public partial class ScriptGroupProject : ObservableObject
             var task = PathingTask.BuildFromFilePath(Path.Combine(MapPathingViewModel.PathJsonPath, FolderName, Name));
             TaskTriggerDispatcher.Instance().AddTrigger("AutoPick", null);
             var pathingTask = new PathExecutor(CancellationContext.Instance.Cts.Token);
-            pathingTask.Config = GroupInfo?.Config.PathingConfig;
+            pathingTask.PartyConfig = GroupInfo?.Config.PathingConfig;
             await pathingTask.Pathing(task);
         }
         else

@@ -10,7 +10,7 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<ApplicationIcon>Assets\Images\logo.ico</ApplicationIcon>
 		<AssemblyName>BetterGI</AssemblyName>
-		<AssemblyVersion>0.35.4</AssemblyVersion>
+		<AssemblyVersion>0.36.3</AssemblyVersion>
 		<Platforms>x64</Platforms>
 		<DebugType>embedded</DebugType>
 	</PropertyGroup>
@@ -65,6 +65,7 @@
 		<PackageReference Include="Sdcb.PaddleInference.runtime.win64.openblas" Version="2.5.1" />
 		<PackageReference Include="Sdcb.PaddleOCR" Version="2.7.0" />
 		<PackageReference Include="Sdcb.PaddleOCR.Models.Online" Version="2.7.0.1" />
+		<PackageReference Include="Sdl.MultiSelectComboBox" Version="1.0.103" />
 		<PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
 		<PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
 		<PackageReference Include="Serilog.Sinks.RichTextBoxEx.Wpf" Version="1.1.0.1" />
@@ -125,6 +126,9 @@
 		<None Update="GameTask\Common\Element\Assets\1920x1080\**">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
+		<None Update="GameTask\Common\Element\Assets\Json\**">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
 		<None Update="GameTask\AutoWood\Assets\1920x1080\**">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
@@ -143,6 +147,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Folder Include="GameTask\Common\Element\Assets\Json\" />
+	  <Folder Include="GameTask\OneDragon\" />
 	  <Folder Include="User\AutoPathing\" />
 	</ItemGroup>
 

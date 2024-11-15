@@ -1,13 +1,19 @@
 ﻿using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoFight.Model;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
+using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Model;
 using BetterGenshinImpact.GameTask.AutoPathing.Handler;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 using BetterGenshinImpact.GameTask.AutoPathing.Model.Enum;
+using BetterGenshinImpact.GameTask.AutoSkip;
+using BetterGenshinImpact.GameTask.AutoSkip.Assets;
 using BetterGenshinImpact.GameTask.AutoTrackPath;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
+using BetterGenshinImpact.GameTask.Common.Job;
 using BetterGenshinImpact.GameTask.Common.Map;
+using BetterGenshinImpact.GameTask.Model.Area;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using Microsoft.Extensions.Logging;
@@ -20,6 +26,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Vanara.PInvoke;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
+using ActionEnum = BetterGenshinImpact.GameTask.AutoPathing.Model.Enum.ActionEnum;
 
 namespace BetterGenshinImpact.GameTask.AutoPathing;
 
@@ -27,17 +34,24 @@ public class PathExecutor(CancellationToken ct)
 {
     private readonly CameraRotateTask _rotateTask = new(ct);
     private readonly TrapEscaper _trapEscaper = new(ct);
+    private readonly BlessingOfTheWelkinMoonTask _blessingOfTheWelkinMoonTask = new();
+    private AutoSkipTrigger? _autoSkipTrigger;
 
-    private PathingConfig? _config;
+    private PathingPartyConfig? _partyConfig;
 
-    public PathingConfig Config
+    public PathingPartyConfig PartyConfig
     {
-        get => _config ??= new PathingConfig();
-        set => _config = value;
+        get => _partyConfig ?? new PathingPartyConfig();
+        set => _partyConfig = value;
     }
 
+    /// <summary>
+    /// 判断是否中止路径追踪的条件
+    /// </summary>
+    public Func<ImageRegion, bool>? EndAction { get; set; }
+
     private CombatScenes? _combatScenes;
-    private readonly Dictionary<string, string> _actionAvatarIndexMap = new();
+    // private readonly Dictionary<string, string> _actionAvatarIndexMap = new();
 
     private DateTime _elementalSkillLastUseTime = DateTime.MinValue;
 
@@ -50,6 +64,34 @@ public class PathExecutor(CancellationToken ct)
         {
             Logger.LogWarning("没有路径点，寻路结束");
             return;
+        }
+
+        // 切换队伍
+        var pRaList = CaptureToRectArea().FindMulti(AutoFightAssets.Instance.PRa); // 判断是否联机
+        if (pRaList.Count > 0)
+        {
+            Logger.LogInformation("处于联机状态下，不切换队伍");
+        }
+        else
+        {
+            if (PartyConfig is { Enabled: false })
+            {
+                // 调度器未配置的情况下，根据路径追踪条件配置切换队伍
+                var partyName = FilterPartyNameByConditionConfig(task);
+                if (!await SwitchParty(partyName))
+                {
+                    Logger.LogError("切换队伍失败，无法执行此路径！请检查路径追踪设置！");
+                    return;
+                }
+            }
+            else if (!string.IsNullOrEmpty(PartyConfig.PartyName))
+            {
+                if (!await SwitchParty(PartyConfig.PartyName))
+                {
+                    Logger.LogError("切换队伍失败，无法执行此路径！请检查配置组中的路径追踪配置！");
+                    return;
+                }
+            }
         }
 
         // 校验路径是否可以执行
@@ -69,6 +111,7 @@ public class PathExecutor(CancellationToken ct)
         {
             try
             {
+                await ResolveAnomalies(); // 异常场景处理
                 foreach (var waypoint in waypoints)
                 {
                     await RecoverWhenLowHp(); // 低血量恢复
@@ -94,13 +137,17 @@ public class PathExecutor(CancellationToken ct)
 
                 break;
             }
+            catch (NormalEndException normalEndException)
+            {
+                Logger.LogInformation(normalEndException.Message);
+                break;
+            }
             catch (RetryException retryException)
             {
                 Logger.LogWarning(retryException.Message);
             }
             finally
             {
-                _actionAvatarIndexMap.Clear(); // 没啥用，但还是写上
                 // 不管咋样，松开所有按键
                 Simulation.SendInput.Keyboard.KeyUp(User32.VK.VK_W);
                 Simulation.SendInput.Mouse.RightButtonUp();
@@ -110,16 +157,91 @@ public class PathExecutor(CancellationToken ct)
 
     private void InitializePathing(PathingTask task)
     {
+        LogScreenResolution();
         WeakReferenceMessenger.Default.Send(new PropertyChangedMessage<object>(this,
             "UpdateCurrentPathing", new object(), task));
     }
 
+    private void LogScreenResolution()
+    {
+        var gameScreenSize = SystemControl.GetGameScreenRect(TaskContext.Instance().GameHandle);
+        if (gameScreenSize.Width * 9 != gameScreenSize.Height * 16)
+        {
+            Logger.LogError("游戏窗口分辨率不是 16:9 ！当前分辨率为 {Width}x{Height} , 非 16:9 分辨率的游戏无法正常使用路径追踪功能！", gameScreenSize.Width, gameScreenSize.Height);
+        }
+
+        if (gameScreenSize.Width < 1920 || gameScreenSize.Height < 1080)
+        {
+            Logger.LogError("游戏窗口分辨率小于 1920x1080 ！当前分辨率为 {Width}x{Height} , 小于 1920x1080 的分辨率的游戏路径追踪的效果非常差！", gameScreenSize.Width, gameScreenSize.Height);
+        }
+    }
+
+    /// <summary>
+    /// 切换队伍
+    /// </summary>
+    /// <param name="partyName"></param>
+    /// <returns></returns>
+    private async Task<bool> SwitchParty(string? partyName)
+    {
+        if (!string.IsNullOrEmpty(partyName))
+        {
+            if (RunnerContext.Instance.PartyName == partyName)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrEmpty(RunnerContext.Instance.PartyName))
+            {
+                // 非空的情况下，先tp到安全位置（回血的七天神像）
+                await new TpTask(ct).Tp(TpTask.ReviveStatueOfTheSevenPointX, TpTask.ReviveStatueOfTheSevenPointY, true);
+            }
+
+            var success = await new SwitchPartyTask().Start(partyName, ct);
+            if (success)
+            {
+                RunnerContext.Instance.PartyName = partyName;
+                RunnerContext.Instance.ClearCombatScenes();
+                return true;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string? FilterPartyNameByConditionConfig(PathingTask task)
+    {
+        var pathingConditionConfig = TaskContext.Instance().Config.PathingConditionConfig;
+        var materialName = task.GetMaterialName();
+        var specialActions = task.Positions
+            .Select(p => p.Action)
+            .Where(action => !string.IsNullOrEmpty(action))
+            .Distinct()
+            .ToList();
+        var partyName = pathingConditionConfig.FilterPartyName(materialName, specialActions);
+        return partyName;
+    }
+
+    /// <summary>
+    /// 校验
+    /// </summary>
+    /// <param name="task"></param>
+    /// <returns></returns>
     private async Task<bool> ValidateGameWithTask(PathingTask task)
     {
         _combatScenes = await RunnerContext.Instance.GetCombatScenes(ct);
         if (_combatScenes == null)
         {
             return false;
+        }
+
+        // 没有强制配置的情况下，使用路径追踪内的条件配置
+        // 必须放在这里，因为要通过队伍识别来得到最终结果
+        var pathingConditionConfig = TaskContext.Instance().Config.PathingConditionConfig;
+        if (PartyConfig is { Enabled: false })
+        {
+            PartyConfig = pathingConditionConfig.BuildPartyConfigByCondition(_combatScenes);
         }
 
         // 校验角色是否存在
@@ -132,33 +254,47 @@ public class PathExecutor(CancellationToken ct)
                 return false;
             }
 
-            _actionAvatarIndexMap.Add("nahida_collect", avatar.Index.ToString());
+            // _actionAvatarIndexMap.Add("nahida_collect", avatar.Index.ToString());
         }
 
         // 把所有需要切换的角色编号记录下来
-        if (task.HasAction("normal_attack"))
+        Dictionary<string, ElementalType> map = new()
         {
-            if (string.IsNullOrEmpty(Config.NormalAttackAvatarIndex))
+            { ActionEnum.HydroCollect.Code, ElementalType.Hydro },
+            { ActionEnum.ElectroCollect.Code, ElementalType.Electro },
+            { ActionEnum.AnemoCollect.Code, ElementalType.Anemo }
+        };
+
+        foreach (var (action, el) in map)
+        {
+            if (!ValidateElementalActionAvatarIndex(task, action, el, _combatScenes))
             {
-                Logger.LogError("此路径存在普攻动作，未设置普攻角色编号，无法执行此路径！");
                 return false;
             }
-
-            _actionAvatarIndexMap.Add("normal_attack", Config.NormalAttackAvatarIndex);
-        }
-
-        if (task.HasAction("elemental_skill"))
-        {
-            if (string.IsNullOrEmpty(Config.ElementalSkillAvatarIndex))
-            {
-                Logger.LogError("此路径存在释放元素战技动作，未设置元素战技角色编号，无法执行此路径！");
-                return false;
-            }
-
-            _actionAvatarIndexMap.Add("elemental_skill", Config.ElementalSkillAvatarIndex);
         }
 
         return true;
+    }
+
+    private bool ValidateElementalActionAvatarIndex(PathingTask task, string action, ElementalType el, CombatScenes combatScenes)
+    {
+        if (task.HasAction(action))
+        {
+            foreach (var avatar in combatScenes.Avatars)
+            {
+                if (ElementalCollectAvatarConfigs.Get(avatar.Name, el) != null)
+                {
+                    return true;
+                }
+            }
+
+            Logger.LogError("此路径存在 {action} 收集动作，队伍中没有对应元素角色:{}，无法执行此路径！", action, string.Join(",", ElementalCollectAvatarConfigs.GetAvatarNameList(el)));
+            return false;
+        }
+        else
+        {
+            return true;
+        }
     }
 
     private List<WaypointForTrack> ConvertWaypointsForTrack(List<Waypoint> positions)
@@ -180,7 +316,7 @@ public class PathExecutor(CancellationToken ct)
         {
             await Bv.WaitForMainUi(ct); // 等待主界面加载完成
             Logger.LogInformation("复苏完成");
-            await Delay(3000, ct);
+            await Delay(4000, ct);
             // 血量肯定不满，直接去七天神像回血
             await TpStatueOfTheSeven();
             throw new RetryException("回血完成后重试路线");
@@ -208,10 +344,10 @@ public class PathExecutor(CancellationToken ct)
     private async Task MoveTo(WaypointForTrack waypoint)
     {
         // 切人
-        await SwitchAvatar(Config.MainAvatarIndex);
+        await SwitchAvatar(PartyConfig.MainAvatarIndex);
 
         var screen = CaptureToRectArea();
-        var position = Navigation.GetPosition(screen);
+        var position = await GetPosition(screen);
         var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
         Logger.LogInformation("粗略接近途经点，位置({x2},{y2})", $"{waypoint.GameX:F1}", $"{waypoint.GameY:F1}");
         await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
@@ -235,7 +371,10 @@ public class PathExecutor(CancellationToken ct)
             }
 
             screen = CaptureToRectArea();
-            position = Navigation.GetPosition(screen);
+
+            EndJudgment(screen);
+
+            position = await GetPosition(screen);
             var distance = Navigation.GetDistance(waypoint, position);
             Debug.WriteLine($"接近目标点中，距离为{distance}");
             if (distance < 4)
@@ -336,7 +475,7 @@ public class PathExecutor(CancellationToken ct)
                 }
 
                 // 使用 E 技能
-                if (!string.IsNullOrEmpty(Config.GuardianAvatarIndex) && double.TryParse(Config.GuardianElementalSkillSecondInterval, out var s))
+                if (!string.IsNullOrEmpty(PartyConfig.GuardianAvatarIndex) && double.TryParse(PartyConfig.GuardianElementalSkillSecondInterval, out var s))
                 {
                     if (s < 1)
                     {
@@ -346,16 +485,16 @@ public class PathExecutor(CancellationToken ct)
 
                     var ms = s * 1000;
                     Debug.WriteLine($"元素战技释放间隔：{(now - _elementalSkillLastUseTime).TotalMilliseconds}ms");
-                    if ((now - _elementalSkillLastUseTime).TotalMilliseconds > ms)
+                    if ((DateTime.UtcNow - _elementalSkillLastUseTime).TotalMilliseconds > ms)
                     {
                         // 可能刚切过人在冷却时间内
-                        if (num <= 5 && (!string.IsNullOrEmpty(Config.MainAvatarIndex) && Config.GuardianAvatarIndex != Config.MainAvatarIndex))
+                        if (num <= 5 && (!string.IsNullOrEmpty(PartyConfig.MainAvatarIndex) && PartyConfig.GuardianAvatarIndex != PartyConfig.MainAvatarIndex))
                         {
                             await Delay(800, ct); // 总共1s
                         }
 
                         await UseElementalSkill();
-                        _elementalSkillLastUseTime = now;
+                        _elementalSkillLastUseTime = DateTime.UtcNow;
                     }
                 }
             }
@@ -369,7 +508,7 @@ public class PathExecutor(CancellationToken ct)
 
     private async Task UseElementalSkill()
     {
-        if (string.IsNullOrEmpty(Config.GuardianAvatarIndex))
+        if (string.IsNullOrEmpty(PartyConfig.GuardianAvatarIndex))
         {
             return;
         }
@@ -378,7 +517,7 @@ public class PathExecutor(CancellationToken ct)
 
         // 切人
         Logger.LogInformation("切换盾、回血角色，使用元素战技");
-        var avatar = await SwitchAvatar(Config.GuardianAvatarIndex);
+        var avatar = await SwitchAvatar(PartyConfig.GuardianAvatarIndex);
         if (avatar == null)
         {
             return;
@@ -393,7 +532,7 @@ public class PathExecutor(CancellationToken ct)
             await Delay(200, ct);
         }
 
-        if (Config.GuardianElementalSkillLongPress)
+        if (PartyConfig.GuardianElementalSkillLongPress)
         {
             Simulation.SendInput.Keyboard.KeyDown(User32.VK.VK_E);
             await Task.Delay(800); // 不能取消
@@ -416,7 +555,7 @@ public class PathExecutor(CancellationToken ct)
     private async Task MoveCloseTo(WaypointForTrack waypoint)
     {
         var screen = CaptureToRectArea();
-        var position = Navigation.GetPosition(screen);
+        var position = await GetPosition(screen);
         var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
         Logger.LogInformation("精确接近目标点，位置({x2},{y2})", $"{waypoint.GameX:F1}", $"{waypoint.GameY:F1}");
         if (waypoint.MoveMode == MoveModeEnum.Fly.Code && waypoint.Action == ActionEnum.StopFlying.Code)
@@ -432,14 +571,17 @@ public class PathExecutor(CancellationToken ct)
         while (!ct.IsCancellationRequested)
         {
             stepsTaken++;
-            if (stepsTaken > 20)
+            if (stepsTaken > 25)
             {
                 Logger.LogWarning("精确接近超时");
                 break;
             }
 
             screen = CaptureToRectArea();
-            position = Navigation.GetPosition(screen);
+
+            EndJudgment(screen);
+
+            position = await GetPosition(screen);
             if (Navigation.GetDistance(waypoint, position) < 2)
             {
                 Logger.LogInformation("已到达路径点");
@@ -450,7 +592,7 @@ public class PathExecutor(CancellationToken ct)
             await _rotateTask.WaitUntilRotatedTo(targetOrientation, 2);
             // 小碎步接近
             Simulation.SendInput.Keyboard.KeyDown(User32.VK.VK_W).Sleep(60).KeyUp(User32.VK.VK_W);
-            await Delay(50, ct);
+            await Delay(20, ct);
         }
 
         Simulation.SendInput.Keyboard.KeyUp(User32.VK.VK_W);
@@ -474,19 +616,10 @@ public class PathExecutor(CancellationToken ct)
         if (waypoint.Action == ActionEnum.NahidaCollect.Code
             || waypoint.Action == ActionEnum.PickAround.Code
             || waypoint.Action == ActionEnum.Fight.Code
-            || waypoint.Action == ActionEnum.NormalAttack.Code
-            || waypoint.Action == ActionEnum.ElementalSkill.Code)
+            || waypoint.Action == ActionEnum.HydroCollect.Code
+            || waypoint.Action == ActionEnum.ElectroCollect.Code
+            || waypoint.Action == ActionEnum.AnemoCollect.Code)
         {
-            // 切人
-            if (_actionAvatarIndexMap.TryGetValue(waypoint.Action, out var index))
-            {
-                var avatar = await SwitchAvatar(index);
-                if (avatar == null)
-                {
-                    return;
-                }
-            }
-
             var handler = ActionFactory.GetAfterHandler(waypoint.Action);
             await handler.RunAsync(ct);
             await Delay(1000, ct);
@@ -516,5 +649,84 @@ public class PathExecutor(CancellationToken ct)
         }
 
         return null;
+    }
+
+    private async Task<Point2f> GetPosition(ImageRegion imageRegion)
+    {
+        var position = Navigation.GetPosition(imageRegion);
+
+        if (position == new Point2f())
+        {
+            if (!Bv.IsInBigMapUi(imageRegion))
+            {
+                await ResolveAnomalies();
+            }
+        }
+
+        return position;
+    }
+
+    /**
+     * 处理各种异常场景
+     * 需要保证耗时不能太高
+     */
+
+    private async Task ResolveAnomalies()
+    {
+        // 处理月卡
+        await _blessingOfTheWelkinMoonTask.Start(ct);
+
+        if (PartyConfig.AutoSkipEnabled)
+        {
+            // 判断是否进入剧情
+            await AutoSkip();
+        }
+    }
+
+    private async Task AutoSkip()
+    {
+        var ra = CaptureToRectArea();
+        var disabledUiButtonRa = ra.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+        if (disabledUiButtonRa.IsExist())
+        {
+            Logger.LogWarning("进入剧情，自动点击剧情直到结束");
+
+            if (_autoSkipTrigger == null)
+            {
+                _autoSkipTrigger = new AutoSkipTrigger();
+                _autoSkipTrigger.Init();
+            }
+
+            int noDisabledUiButtonTimes = 0;
+
+            while (true)
+            {
+                ra = CaptureToRectArea();
+                disabledUiButtonRa = ra.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+                if (disabledUiButtonRa.IsExist())
+                {
+                    _autoSkipTrigger.OnCapture(new CaptureContent(ra));
+                }
+                else
+                {
+                    noDisabledUiButtonTimes++;
+                    if (noDisabledUiButtonTimes > 10)
+                    {
+                        Logger.LogInformation("自动剧情结束");
+                        break;
+                    }
+                }
+
+                await Delay(210, ct);
+            }
+        }
+    }
+
+    private void EndJudgment(ImageRegion ra)
+    {
+        if (EndAction != null && EndAction(ra))
+        {
+            throw new NormalEndException("达成结束条件，结束路径追踪");
+        }
     }
 }

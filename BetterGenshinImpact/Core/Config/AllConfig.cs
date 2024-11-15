@@ -56,6 +56,12 @@ public partial class AllConfig : ObservableObject
     private bool _wgcUseBitmapCache = true;
 
     /// <summary>
+    /// 自动修复Win11下BitBlt截图方式不可用的问题
+    /// </summary>
+    [ObservableProperty]
+    private bool _autoFixWin11BitBlt = true;
+
+    /// <summary>
     /// 推理使用的设备
     /// </summary>
     [ObservableProperty]
@@ -133,10 +139,10 @@ public partial class AllConfig : ObservableObject
     /// </summary>
     public ScriptConfig ScriptConfig { get; set; } = new();
 
-    // /// <summary>
-    // /// 路径追踪配置
-    // /// </summary>
-    // public PathingConfig PathingConfig { get; set; } = new();
+    /// <summary>
+    /// 路径追踪配置
+    /// </summary>
+    public PathingConditionConfig PathingConditionConfig { get; set; } = PathingConditionConfig.Default;
 
     /// <summary>
     ///     快捷键配置
@@ -172,7 +178,7 @@ public partial class AllConfig : ObservableObject
         AutoDomainConfig.PropertyChanged += OnAnyPropertyChanged;
 
         ScriptConfig.PropertyChanged += OnAnyPropertyChanged;
-        // PathingConfig.PropertyChanged += OnAnyPropertyChanged;
+        PathingConditionConfig.PropertyChanged += OnAnyPropertyChanged;
     }
 
     public void OnAnyPropertyChanged(object? sender, EventArgs args)

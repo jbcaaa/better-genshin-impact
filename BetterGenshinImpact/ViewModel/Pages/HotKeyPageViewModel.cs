@@ -9,6 +9,7 @@ using BetterGenshinImpact.GameTask.AutoPathing.Handler;
 using BetterGenshinImpact.GameTask.AutoTrackPath;
 using BetterGenshinImpact.GameTask.Common;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
+using BetterGenshinImpact.GameTask.Common.Job;
 using BetterGenshinImpact.GameTask.Macro;
 using BetterGenshinImpact.GameTask.QucikBuy;
 using BetterGenshinImpact.GameTask.QuickSereniteaPot;
@@ -26,6 +27,8 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
+using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Model;
 using HotKeySettingModel = BetterGenshinImpact.Model.HotKeySettingModel;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
@@ -106,6 +109,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
         {
             return;
         }
+
         var list = GetAllNonDirectoryHotkey(HotKeySettingModels);
         foreach (var hotKeySettingModel in list)
         {
@@ -130,8 +134,10 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             {
                 list.Add(hotKeySettingModel);
             }
+
             list.AddRange(GetAllNonDirectoryChildren(hotKeySettingModel));
         }
+
         return list;
     }
 
@@ -201,10 +207,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             nameof(Config.HotKeyConfig.CancelTaskHotkey),
             Config.HotKeyConfig.CancelTaskHotkey,
             Config.HotKeyConfig.CancelTaskHotkeyType,
-            (_, _) =>
-            {
-                CancellationContext.Instance.Cancel();
-            }
+            (_, _) => { CancellationContext.Instance.Cancel(); }
         ));
 
         var takeScreenshotHotKeySettingModel = new HotKeySettingModel(
@@ -345,10 +348,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             nameof(Config.HotKeyConfig.AutoGeniusInvokationHotkey),
             Config.HotKeyConfig.AutoGeniusInvokationHotkey,
             Config.HotKeyConfig.AutoGeniusInvokationHotkeyType,
-            (_, _) =>
-            {
-                SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoGeniusInvokationCommand);
-            }
+            (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoGeniusInvokationCommand); }
         ));
 
         soloTaskDirectory.Children.Add(new HotKeySettingModel(
@@ -356,10 +356,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             nameof(Config.HotKeyConfig.AutoWoodHotkey),
             Config.HotKeyConfig.AutoWoodHotkey,
             Config.HotKeyConfig.AutoWoodHotkeyType,
-            (_, _) =>
-            {
-                SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoWoodCommand);
-            }
+            (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoWoodCommand); }
         ));
 
         soloTaskDirectory.Children.Add(new HotKeySettingModel(
@@ -367,10 +364,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             nameof(Config.HotKeyConfig.AutoFightHotkey),
             Config.HotKeyConfig.AutoFightHotkey,
             Config.HotKeyConfig.AutoFightHotkeyType,
-            (_, _) =>
-            {
-                SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoFightCommand);
-            }
+            (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoFightCommand); }
         ));
 
         soloTaskDirectory.Children.Add(new HotKeySettingModel(
@@ -378,10 +372,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             nameof(Config.HotKeyConfig.AutoDomainHotkey),
             Config.HotKeyConfig.AutoDomainHotkey,
             Config.HotKeyConfig.AutoDomainHotkeyType,
-            (_, _) =>
-            {
-                SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoDomainCommand);
-            }
+            (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoDomainCommand); }
         ));
 
         macroDirectory.Children.Add(new HotKeySettingModel(
@@ -446,6 +437,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
                     _logger.LogError("无法找到 KeyMouseRecordPageViewModel 单例对象！");
                     return;
                 }
+
                 if (GlobalKeyMouseRecord.Instance.Status == KeyMouseRecorderStatus.Stop)
                 {
                     Thread.Sleep(300); // 防止录进快捷键进去
@@ -488,6 +480,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
                 {
                     pathRecorder.Start();
                 }
+
                 pathRecording = !pathRecording;
             }
         ));
@@ -519,10 +512,7 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
                 nameof(Config.HotKeyConfig.AutoMusicGameHotkey),
                 Config.HotKeyConfig.AutoMusicGameHotkey,
                 Config.HotKeyConfig.AutoMusicGameHotkeyType,
-                (_, _) =>
-                {
-                    SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoMusicGameCommand);
-                }
+                (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoMusicGameCommand); }
             ));
             // HotKeySettingModels.Add(new HotKeySettingModel(
             //     "（测试）启动/停止自动追踪",
@@ -560,8 +550,14 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
                 Config.HotKeyConfig.Test1HotkeyType,
                 (_, _) =>
                 {
-                    NahidaCollectHandler handler = new NahidaCollectHandler();
-                    handler.RunAsync(new CancellationToken());
+                    // var handler = new ElementalCollectHandler(ElementalType.Anemo);
+                    // handler.RunAsync(new CancellationToken());
+
+                    // SwitchPartyTask switchPartyTask = new SwitchPartyTask();
+                    // Task.Run(async () => { await switchPartyTask.Start("三保一", new CancellationToken()); });
+
+                    GoToAdventurersGuildTask goToAdventurersGuildTask = new GoToAdventurersGuildTask();
+                    Task.Run(async () => { await goToAdventurersGuildTask.Start("枫丹", new CancellationToken()); });
                 }
             ));
             debugDirectory.Children.Add(new HotKeySettingModel(
@@ -571,7 +567,8 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
                 Config.HotKeyConfig.Test2HotkeyType,
                 (_, _) =>
                 {
-                    Simulation.SendInput.Mouse.MoveMouseBy(500, 0);
+                    GoToCraftingBenchTask goToCraftingBenchTask = new GoToCraftingBenchTask();
+                    Task.Run(async () => { await goToCraftingBenchTask.Start("枫丹", new CancellationToken()); });
                 }
             ));
 

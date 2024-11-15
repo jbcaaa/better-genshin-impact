@@ -71,6 +71,7 @@ public class TpTask(CancellationToken ct)
             Debug.WriteLine($"({x},{y}) 不在 {bigMapInAllMapRect} 内，继续移动");
             Logger.LogInformation("传送点不在当前大地图范围内，继续移动");
             await MoveMapTo(x, y);
+            await Delay(300, ct); // 等待地图移动完成
             bigMapInAllMapRect = GetBigMapRect();
         }
 
@@ -160,12 +161,13 @@ public class TpTask(CancellationToken ct)
             {
                 return await TpOnce(tpX, tpY, force);
             }
-            catch (TpPointNotActivate)
+            catch (TpPointNotActivate e)
             {
                 // 传送点未激活或不存在 按ESC回到大地图界面
                 Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
                 await Delay(300, ct);
-                throw;
+                // throw; // 不抛出异常，继续重试
+                Logger.LogWarning(e.Message + "  重试");
             }
             catch (Exception e)
             {
@@ -378,6 +380,11 @@ public class TpTask(CancellationToken ct)
             var bigMapCenterPoint = bigMapCenterPointNullable.Value;
             Logger.LogDebug("识别当前大地图位置：{Pos}", bigMapCenterPoint);
             minDistance = Math.Sqrt(Math.Pow(bigMapCenterPoint.X - x, 2) + Math.Pow(bigMapCenterPoint.Y - y, 2));
+            if (minDistance < 50)
+            {
+                // 点位很近的情况下不切换
+                return false;
+            }
         }
 
         var minCountry = "当前位置";
@@ -493,9 +500,10 @@ public class TpTask(CancellationToken ct)
             foreach (var iconRect in rResultList)
             {
                 // 200宽度的文字区域
-                using var ra = imageRegion.DeriveCrop(_assets.MapChooseIconRoi.X + iconRect.X + iconRect.Width, _assets.MapChooseIconRoi.Y + iconRect.Y, 200, iconRect.Height);
+                using var ra = imageRegion.DeriveCrop(_assets.MapChooseIconRoi.X + iconRect.X + iconRect.Width, _assets.MapChooseIconRoi.Y + iconRect.Y - 8, 200, iconRect.Height + 16);
                 using var textRegion = ra.Find(new RecognitionObject
                 {
+                    // RecognitionType = RecognitionTypes.Ocr,
                     RecognitionType = RecognitionTypes.ColorRangeAndOcr,
                     LowerColor = new Scalar(249, 249, 249), // 只取白色文字
                     UpperColor = new Scalar(255, 255, 255),
@@ -505,7 +513,7 @@ public class TpTask(CancellationToken ct)
                     continue;
                 }
 
-                Logger.LogInformation("传送：点击 {Option}", textRegion.Text);
+                Logger.LogInformation("传送：点击 {Option}", textRegion.Text.Replace(">", ""));
                 var time = TaskContext.Instance().Config.QuickTeleportConfig.TeleportListClickDelay;
                 time = time < 500 ? 500 : time;
                 Thread.Sleep(time);

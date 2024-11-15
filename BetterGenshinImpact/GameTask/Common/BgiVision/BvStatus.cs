@@ -10,6 +10,8 @@ using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.GameTask.AutoFight;
 using Vanara.PInvoke;
 using System.Threading;
+using BetterGenshinImpact.GameTask.AutoSkip.Assets;
+using BetterGenshinImpact.GameTask.GameLoading.Assets;
 
 namespace BetterGenshinImpact.GameTask.Common.BgiVision;
 
@@ -42,7 +44,7 @@ public static partial class Bv
     /// <param name="ct"></param>
     /// <param name="retryTimes"></param>
     /// <returns></returns>
-    public static async Task<bool> WaitForMainUi(CancellationToken ct, int retryTimes = 25)
+    public static async Task<bool> WaitForMainUi(CancellationToken ct, int retryTimes = 10)
     {
         for (var i = 0; i < retryTimes; i++)
         {
@@ -53,7 +55,29 @@ public static partial class Bv
                 return true;
             }
         }
+
         return false;
+    }
+
+    /// <summary>
+    /// 是否在队伍选择界面
+    /// </summary>
+    /// <param name="captureRa"></param>
+    /// <returns></returns>
+    public static bool IsInPartyViewUi(ImageRegion captureRa)
+    {
+        return captureRa.Find(ElementAssets.Instance.PartyBtnChooseView).IsExist();
+    }
+
+    /// <summary>
+    /// 等待队伍选择界面加载完成
+    /// </summary>
+    /// <param name="ct"></param>
+    /// <param name="retryTimes"></param>
+    /// <returns></returns>
+    public static async Task<bool> WaitForPartyViewUi(CancellationToken ct, int retryTimes = 5)
+    {
+        return await NewRetry.WaitForAction(() => IsInPartyViewUi(TaskControl.CaptureToRectArea()), ct, retryTimes);
     }
 
     /// <summary>
@@ -144,11 +168,44 @@ public static partial class Bv
     /// <returns></returns>
     public static bool CurrentAvatarIsLowHp(ImageRegion captureRa)
     {
+        var assetScale = TaskContext.Instance().SystemInfo.AssetScale;
+
         // 获取 (808, 1010) 位置的像素颜色
-        var pixelColor = captureRa.SrcMat.At<Vec3b>(1010, 808);
+        var pixelColor = captureRa.SrcMat.At<Vec3b>((int)(1010 * assetScale), (int)(808 * assetScale));
 
         // 判断颜色是否是 (255, 90, 90)
         return pixelColor is { Item2: 255, Item1: 90, Item0: 90 };
+    }
+
+    /// <summary>
+    /// 在空月祝福界面
+    /// </summary>
+    /// <param name="captureRa"></param>
+    /// <returns></returns>
+    public static bool IsInBlessingOfTheWelkinMoon(ImageRegion captureRa)
+    {
+        return captureRa.Find(GameLoadingAssets.Instance.WelkinMoonRo).IsExist();
+    }
+
+    /// <summary>
+    /// 是否在对话界面
+    /// </summary>
+    /// <param name="captureRa"></param>
+    /// <returns></returns>
+    public static bool IsInTalkUi(ImageRegion captureRa)
+    {
+        return captureRa.Find(AutoSkipAssets.Instance.DisabledUiButtonRo).IsExist();
+    }
+
+    /// <summary>
+    /// 等到对话界面加载完成
+    /// </summary>
+    /// <param name="ct"></param>
+    /// <param name="retryTimes"></param>
+    /// <returns></returns>
+    public static async Task<bool> WaitAndSkipForTalkUi(CancellationToken ct, int retryTimes = 5)
+    {
+        return await NewRetry.WaitForAction(() => IsInTalkUi(TaskControl.CaptureToRectArea()), ct, retryTimes, 500);
     }
 }
 
