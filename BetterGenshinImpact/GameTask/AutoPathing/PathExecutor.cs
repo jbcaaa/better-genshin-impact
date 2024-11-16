@@ -35,6 +35,9 @@ public class PathExecutor(CancellationToken ct)
     private readonly CameraRotateTask _rotateTask = new(ct);
     private readonly TrapEscaper _trapEscaper = new(ct);
     private readonly BlessingOfTheWelkinMoonTask _blessingOfTheWelkinMoonTask = new();
+
+    private readonly DepthCalculator _depthCalculator = new();
+    
     private AutoSkipTrigger? _autoSkipTrigger;
 
     private PathingPartyConfig? _partyConfig;
@@ -112,6 +115,10 @@ public class PathExecutor(CancellationToken ct)
             try
             {
                 await ResolveAnomalies(); // 异常场景处理
+                //
+                await _depthCalculator.AutoCalcTimer(ct);
+                Logger.LogWarning("{0}", _depthCalculator.LastTimer);
+                //
                 foreach (var waypoint in waypoints)
                 {
                     await RecoverWhenLowHp(); // 低血量恢复
